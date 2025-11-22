@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: n8n
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n8n-pvc
+  namespace: n8n
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard # ensure this exists in kind
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: n8n
+  template:
+    metadata:
+      labels:
+        app: n8n
+    spec:
+      containers:
+        - name: n8n
+          image: n8nio/n8n:stable
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5678
+          env:
+            - name: N8N_HOST
+              value: "n8n.tikalabs.dev" # <-- Cloudflare hostname
+            - name: N8N_PORT
+              value: "5678"
+            - name: N8N_PROTOCOL
+              value: "https"
+            - name: WEBHOOK_URL
+              value: "https://n8n.tikalabs.dev/" # external URL for webhooks
+            - name: N8N_SECURE_COOKIE
+              value: "true"
+            - name: TRUST_PROXY
+              value: "true"
+          volumeMounts:
+            - name: n8n-data
+              mountPath: /home/node/.n8n
+      volumes:
+        - name: n8n-data
+          persistentVolumeClaim:
+            claimName: n8n-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  type: ClusterIP
+  selector:
+    app: n8n
+  ports:
+    - name: http
+      port: 5678
+      targetPort: 5678
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: n8n
+data:
+  config.yml: |
+    tunnel: my-n8n-tunnel
+    credentials-file: /etc/cloudflared/creds/credentials.json
+
+    ingress:
+      - hostname: n8n.tikalabs.dev
+        service: http://n8n.n8n.svc.cluster.local:5678
+      - service: http_status:404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: n8n
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config/config.yml
+            - run
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config
+            - name: creds
+              mountPath: /etc/cloudflared/creds
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+            items:
+              - key: config.yml
+                path: config.yml
+        - name: creds
+          secret:
+            secretName: cloudflared-credentials
+            items:
+              - key: credentials.json
+                path: credentials.json
