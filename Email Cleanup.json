@@ -1,0 +1,205 @@
+{
+  "name": "Email Cleanup",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 100,
+        "filters": {
+          "q": "-label:Unwanted/Delete"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        0
+      ],
+      "id": "450b2ece-e1a2-4bcc-826b-741b2a6a094e",
+      "name": "Get many messages",
+      "webhookId": "1191f29d-7ccc-4456-ac81-737f341f9493",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "flPepSGwS9nTcKjg",
+          "name": "ArunNambiaraccount"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        32,
+        0
+      ],
+      "id": "0d1e5c9a-cd0b-4120-8759-ec7c9faaa5ff",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are an email cleanup classifier used inside an automation tool (n8n).\n\nTask:\nGiven ONE Gmail email {{ $json.From }},{{ $json.Subject }},{{ $json.snippet }} , ), decide if this email is safe to auto-delete from the inbox.\n\nDELETE when:\n- Marketing, newsletter, promo, discounts, sales, webinar, course, generic blog, product update, digest, or ads\n- Obvious spam or cold outreach that is not personally important\n\nKEEP when:\n- Bank / credit card / tax / government / legal / medical / insurance\n- Order confirmations, invoices, receipts, subscriptions, renewals\n- Travel: flights, hotels, tickets, bookings\n- Security alerts, sign-in notifications, password/OTP codes\n- Work emails, HR, recruiter, calendar invites, performance/review emails\n- Anything clearly personal or from contacts the user knows\n- Emails related to renting the house needs to be kept\n\nknown user\n\nsharnee@raywhite.com\n\nIf uncertain, choose REVIEW.\n\nOutput format:\nReturn ONLY valid JSON, no extra text:\n\n{\n  \"decision\": \"delete\" | \"keep\" | \"review\",\n  \"reason\": \"short one-line explanation\"\n}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "e0d438e1-f9f6-42eb-9d2f-d61f493bad89",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "lRFtToaiTcYlE4ey",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "43c62958-16cb-4450-af9c-4d7a67bec013",
+              "leftValue": "={{ $('Message a model').item.json.output[0].content[0].text }}",
+              "rightValue": "\"decision\": \"delete\"",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "956b103a-3c5d-4d32-9a6e-8d9320c75243",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Get many messages').item.json.id }}",
+        "labelIds": [
+          "Label_2886161855973172546"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1072,
+        -208
+      ],
+      "id": "ca82eb0c-a711-40fa-88ea-dd913663a3eb",
+      "name": "Add label to message",
+      "webhookId": "50a0af54-5fca-4a74-aae7-6441eaa941a9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "flPepSGwS9nTcKjg",
+          "name": "ArunNambiaraccount"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Add label to message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add label to message": {
+      "main": [
+        []
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "timezone": "Australia/Sydney"
+  },
+  "versionId": "6aad376e-7228-4e20-b7f9-500150c733f0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3d6bd145730c2862ce28fe7edca9c9f1f8d2f93879af6ab090dd7d89eb18e035"
+  },
+  "id": "CMPv7pYcmqLdXBrV",
+  "tags": []
+}
